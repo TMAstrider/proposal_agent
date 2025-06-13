@@ -16,18 +16,37 @@ class IRARS:
     """
     智能需求分析推荐系统 (Intelligent Requirement Analysis and Recommendation System).
     """
-    def __init__(self):
+    def __init__(self, api_key=None, base_url=None, model_name="Qwen/Qwen3-30B-A3B", temperature=0.7, top_p=0.7):
         """
         初始化系统，加载知识库和规则。
-        :param knowledge_base_path: 知识库文件的路径。
+        :param api_key: OpenAI API密钥
+        :param base_url: API基础URL
+        :param model_name: 使用的模型名称
+        :param temperature: 温度参数
+        :param top_p: top_p参数
         """
         load_dotenv()
-        print(f"\napi_key: {os.getenv('SILICONFLOW_API_KEY')}\n")
+        
+        # 使用传入的API密钥或从环境变量获取
+        self.api_key = api_key or os.getenv('SILICONFLOW_API_KEY')
+        if not self.api_key:
+            raise ValueError("API密钥未提供，请在初始化时提供api_key参数或在.env文件中设置SILICONFLOW_API_KEY")
+        
+        # 使用传入的base_url或从环境变量获取
+        self.base_url = base_url or os.getenv('OPENAI_API_BASE', 'https://api.siliconflow.cn/v1')
+        
+        # 初始化OpenAI客户端
         self.openai_client = OpenAI(
-            api_key=os.getenv("SILICONFLOW_API_KEY"),
-            base_url='https://api.siliconflow.cn/v1',
+            api_key=self.api_key,
+            base_url=self.base_url,
         )
-        # self.knowledge_base = self._load_json(knowledge_base_path)
+        
+        # 设置模型参数
+        self.model_name = model_name
+        self.temperature = temperature
+        self.top_p = top_p
+        
+        # 加载规则和初始化服务
         self.rules = self._load_rules()
         self.milvus_service = MilvusService()
         self._init_rag_data()
@@ -158,13 +177,13 @@ class IRARS:
             """
 
             response = self.openai_client.chat.completions.create(
-                model="Qwen/Qwen3-30B-A3B",
+                model=self.model_name,
                 messages=[
                     {"role": "system", "content": "你是一个专业的软件需求分析师，总是以结构化的 JSON 格式输出。请确保输出是有效的 JSON 格式。"},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7,
-                top_p=0.7,
+                temperature=self.temperature,
+                top_p=self.top_p,
                 frequency_penalty=0.5,
                 max_tokens=8192  # 增加 token 限制以确保完整的 JSON 输出
             )
@@ -236,13 +255,13 @@ class IRARS:
             """
 
             response = self.openai_client.chat.completions.create(
-                model="Qwen/Qwen3-30B-A3B",
+                model=self.model_name,
                 messages=[
                     {"role": "system", "content": "你是一个专业的产品功能分析师，总是以JSON数组格式输出关键词列表。"},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7,
-                top_p=0.7,
+                temperature=self.temperature,
+                top_p=self.top_p,
                 frequency_penalty=0.5,
                 max_tokens=8192
             )
@@ -361,7 +380,7 @@ class IRARS:
         prompt = f"""
         你是一个专业的产品功能分析师，根据用户的产品功能需求，结合知识库中的文档和系统配置，进行功能分析和推荐。
         
-        系统配置信息：
+        公司已有系统配置信息：
         {json.dumps(specs, indent=2, ensure_ascii=False)}
         
         适用规则：
@@ -375,13 +394,13 @@ class IRARS:
         
         
         按照以下格式输出：
-        ## 总结核心的推荐功能
-        ## 详细描述推荐功能，并给出理由。
-        ## 给出推荐功能的硬件配置
-        ## 如果有其他的方案可以适当给出一个
-        ## 最终结论给出一个配置表格清单（简单）
+        ### 核心的推荐功能
+        ### 推荐功能描述
+        ### 推荐功能的硬件配置
+        ### 如果有其他的方案可以适当给出一个
+        ### 最终结论给出一个配置表格清单（简单）
 
-        请根据以上信息，进行功能分析和推荐，忠于知识库文档以及配置，并说明推荐理由。
+        请根据以上信息，根据**公司已有系统配置**，进行功能分析和推荐，忠于知识库文档以及配置，并说明推荐理由。
         """
 
         return prompt
@@ -395,13 +414,13 @@ class IRARS:
         print("正在调用API生成最终推荐...")
         try:
             response = self.openai_client.chat.completions.create(
-                model="Qwen/Qwen3-235B-A22B",
+                model=self.model_name,
                 messages=[
                     {"role": "system", "content": "你是一个专业的产品推荐专家，请根据分析结果生成结构化推荐。"},
                     {"role": "user", "content": constructed_result}
                 ],
-                temperature=0.7,
-                top_p=0.7,
+                temperature=self.temperature,
+                top_p=self.top_p,
                 frequency_penalty=0.5,
                 max_tokens=8192
             )
@@ -446,10 +465,10 @@ if __name__ == '__main__':
     案例场景：母婴电商平台的用户评论智能化管理
 
     企业背景
-    某中型母婴电商平台“BabyCare”主营婴幼儿用品，月均订单量超10万，用户评论日均新增5000条。随着业务增长，平台面临两大问题：
+    某中型母婴电商平台"BabyCare"主营婴幼儿用品，月均订单量超10万，用户评论日均新增5000条。随着业务增长，平台面临两大问题：
 
     评论处理低效：人工筛选评论耗时耗力，无法快速定位用户对产品质量、物流速度、客服服务的具体反馈。
-    需求洞察模糊：用户对商品的评价分散且主观（如“纸尿裤漏尿”“奶瓶刻度不清晰”），难以系统化分析高频问题，导致改进措施滞后。
+    需求洞察模糊：用户对商品的评价分散且主观（如"纸尿裤漏尿""奶瓶刻度不清晰"），难以系统化分析高频问题，导致改进措施滞后。
     """
     output = irars_system.analyze(user_query)
     print(output)
