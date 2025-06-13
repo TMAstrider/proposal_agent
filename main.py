@@ -3,7 +3,7 @@ import os
 import rules
 from dotenv import load_dotenv
 from openai import OpenAI
-import os
+from milvus_service import MilvusService
 
 from pymilvus import MilvusClient
 
@@ -27,13 +27,39 @@ class IRARS:
         )
         self.knowledge_base = self._load_json(knowledge_base_path)
         self.rules = self._load_rules()
-        self._init_milvus()
+        self.milvus_service = MilvusService()
+        self._init_rag_data()
 
+    def _init_rag_data(self):
+        """初始化 RAG 数据"""
+        print("\n正在处理 RAG 数据...")
+        result = self.milvus_service.process_rag_data()
+        if result and result['success']:
+            print(f"成功处理 {result['processed_files']} 个文件，共 {result['total_chunks']} 个文本块")
+        else:
+            print("处理 RAG 数据失败")
+
+    def _init_milvus_demo(self):
+        """初始化 Milvus 演示数据"""
+        # 示例文档
+        docs = [
+            "猫不是狗.",
+            "狗不是猫.",
+            "老虎是猫.",
+        ]
+        
+        # 插入文档
+        self.milvus_service.insert_documents(docs)
+        
+        # 测试搜索
+        query = "猫是不是狗"
+        results = self.milvus_service.search_similar(query)
+        print("搜索结果:", results)
 
     def _init_milvus(self):
         """初始化 Milvus 连接。"""
         
-        self.milvus_client = MilvusClient("milvus_demo.db")
+        self.milvus_client = MilvusClient("milvus_main.db")
 
         if self.milvus_client.has_collection(collection_name="demo_collection"):
             self.milvus_client.drop_collection(collection_name="demo_collection")
@@ -130,7 +156,7 @@ class IRARS:
             """
 
             response = self.openai_client.chat.completions.create(
-                model="Qwen/QwQ-32B",
+                model="Qwen/Qwen3-30B-A3B",
                 messages=[
                     {"role": "system", "content": "你是一个专业的软件需求分析师，总是以结构化的 JSON 格式输出。请确保输出是有效的 JSON 格式。"},
                     {"role": "user", "content": prompt}
@@ -195,14 +221,7 @@ class IRARS:
             这些关键词将用于在我们的知识库中进行匹配。
 
             我们的产品主要能力包括但不限于：
-            - 文档识别和处理
-            - 知识库构建和问答
-            - 数据分析和可视化
-            - 用户认证和权限管理
-            - 系统集成和API对接
-            - 实时数据处理
-            - 报表生成
-            - 工作流自动化
+            意图理解、闲聊问答、知识问答（RAG）、评论分析、知识库构建、文档分类、数据流转、关键字段审核、非结构化文档处理、数据整合和处理、
 
             请仔细分析以下实体信息，并生成最相关的关键词列表：
             {entities_str}
@@ -215,7 +234,7 @@ class IRARS:
             """
 
             response = self.openai_client.chat.completions.create(
-                model="Qwen/QwQ-32B",
+                model="Qwen/Qwen3-30B-A3B",
                 messages=[
                     {"role": "system", "content": "你是一个专业的产品功能分析师，总是以JSON数组格式输出关键词列表。"},
                     {"role": "user", "content": prompt}
@@ -280,7 +299,46 @@ class IRARS:
         :return: 匹配到的模块列表。
         """
         print(f"用关键词 {keywords} 匹配模块...")
-        pass
+        
+        matched_results = []
+        
+        # 对每个关键词进行检索
+        for keyword in keywords:
+            print(f"\n检索关键词: {keyword}")
+            try:
+                # 使用 Milvus 服务进行语义检索
+                results = self.milvus_service.search_similar(keyword, limit=3)
+                print(results)
+                # if results and len(results) > 0:
+                #     # 处理检索结果
+                #     for hit in results[0]:
+                #         result = {
+                #             'keyword': keyword,
+                #             'text': hit.entity.get('text', ''),
+                #             'metadata': hit.entity.get('metadata', {}),
+                #             'score': hit.score
+                #         }
+                #         matched_results.append(result)
+                #         print(f"找到匹配: {result['text'][:100]}... (相似度: {result['score']:.4f})")
+                # else:
+                #     print(f"未找到与关键词 '{keyword}' 相关的匹配")
+                    
+            except Exception as e:
+                print(f"检索关键词 '{keyword}' 时出错: {str(e)}")
+                continue
+        
+        # 按相似度排序并去重
+        unique_results = []
+        seen_texts = set()
+        
+        for result in sorted(matched_results, key=lambda x: x['score'], reverse=True):
+            text = result['text']
+            if text not in seen_texts:
+                seen_texts.add(text)
+                unique_results.append(result)
+        
+        print(f"\n共找到 {len(unique_results)} 个唯一匹配")
+        return unique_results
 
     def _apply_rules(self, matched_modules):
         """
@@ -317,7 +375,22 @@ if __name__ == '__main__':
     # 示例用法
     # 请确保您已经在 .env 文件中设置了 SILICONFLOW_API_KEY
     irars_system = IRARS()
-    user_query = "我需要开发一个在线商城。核心功能是用户可以浏览商品、加入购物车并在线支付。我们希望这个系统能跑在标准的云服务器上，并且未来能集成第三方的库存管理系统。最终目标是提升销售额和用户满意度。"
+    place_holder = "user query:"
+    user_query = f"""
+    {place_holder}
+    企业背景：
+    某跨国科技公司（规模：5000+员工）专注于人工智能和云计算解决方案的开发与推广。随着公司业务的快速扩张，内部知识库积累了大量的技术文档、产品手册、客户案例以及市场研究报告。然而，由于信息分散且缺乏高效的检索工具，员工在查找相关资料时经常遇到以下挑战：
+
+    信息检索效率低：员工需要花费大量时间在不同系统中手动搜索，且难以精准定位所需内容。
+    知识共享不足：新员工或跨部门协作时，难以快速获取历史项目经验或技术文档，导致重复劳动。
+    决策支持有限：管理层在制定战略时，无法快速整合公司内部的全部相关知识，影响决策的准确性和时效性。
+    预期效果：
+    该公司希望实现以下改进：
+
+    高效信息检索：员工输入关键词（如"云迁移最佳实践"）后，自动从内部文档（Confluence、SharePoint、GitHub等）中检索相关内容，并生成简洁、准确的摘要或答案，显著减少搜索时间。
+    智能知识整合：跨部门协作时，系统能自动关联相关案例（如"某客户云架构设计"），生成上下文相关的建议，避免信息孤岛。
+    动态决策支持：管理层可通过自然语言提问（如"近两年亚太区客户需求趋势"），实时整合销售报告、市场分析等数据，生成结构化洞察，辅助快速决策。
+    """
     
     print(f"用户需求: {user_query}\n")
     
@@ -341,3 +414,10 @@ if __name__ == '__main__':
     # recommendation = irars_system.analyze(user_query)
     # print(f"分析结果: {recommendation}")
     # print("------------------------------------")
+
+    print("\n----------- 模块匹配 -----------")
+    matched_modules = irars_system._match_modules(keywords)
+    # if matched_modules:
+        # print("\n最终匹配到的模块列表:")
+        # print(json.dumps(matched_modules, indent=2, ensure_ascii=False))
+    print("------------------------------------")
