@@ -10,7 +10,7 @@ git clone https://github.com/TMAstrider/proposal_agent.git
 ```
 pip install -r requirements.txt
 ```
-4. 运行项目
+4. 终端运行项目
 ```
 streamlit run app.py
 ```
