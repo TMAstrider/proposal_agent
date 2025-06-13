@@ -16,7 +16,7 @@ class IRARS:
     """
     智能需求分析推荐系统 (Intelligent Requirement Analysis and Recommendation System).
     """
-    def __init__(self, knowledge_base_path='knowledge_base.json'):
+    def __init__(self):
         """
         初始化系统，加载知识库和规则。
         :param knowledge_base_path: 知识库文件的路径。
@@ -27,7 +27,7 @@ class IRARS:
             api_key=os.getenv("SILICONFLOW_API_KEY"),
             base_url='https://api.siliconflow.cn/v1',
         )
-        self.knowledge_base = self._load_json(knowledge_base_path)
+        # self.knowledge_base = self._load_json(knowledge_base_path)
         self.rules = self._load_rules()
         self.milvus_service = MilvusService()
         self._init_rag_data()
@@ -374,19 +374,52 @@ class IRARS:
         {user_query}
         
         请根据以上信息，进行功能分析和推荐，并说明推荐理由。
+        按照以下格式输出：
+        1. 总结核心的推荐功能
+        2. 详细描述推荐功能，并给出理由。
+        3. 给出推荐功能的硬件配置
+        4. 如果有其他的方案可以适当给出一个
+        5. 最终结论给出一个配置表格清单（简单）
         """
 
         return prompt
 
     def _generate_output(self, constructed_result):
         """
-        根据分析结果生成最终的推荐或输出。
-        :param analysis_result: 分析和推理的结果。
-        :return: 格式化的输出字符串。
+        根据构造的prompt结果生成最终的推荐输出。
+        :param constructed_result: 构造的prompt结果。
+        :return: 格式化的推荐输出。
         """
-        print(f"最后总结生成输出...")
-
-        pass
+        print("正在调用API生成最终推荐...")
+        try:
+            response = self.openai_client.chat.completions.create(
+                model="Qwen/Qwen3-235B-A22B",
+                messages=[
+                    {"role": "system", "content": "你是一个专业的产品推荐专家，请根据分析结果生成结构化推荐。"},
+                    {"role": "user", "content": constructed_result}
+                ],
+                temperature=0.7,
+                top_p=0.7,
+                frequency_penalty=0.5,
+                max_tokens=8192
+            )
+            
+            contents = response.choices[0].message.content
+            # print("\nAPI返回的推荐结果:")
+            # print(contents)
+            
+            # 尝试解析JSON格式的推荐结果
+            try:
+                return json.loads(contents)
+            except json.JSONDecodeError:
+                # 如果不是JSON格式，直接返回原始内容
+                return contents
+                
+        except Exception as e:
+            print(f"生成推荐时出错: {e}")
+            return "生成推荐时发生错误"
+        
+        return ""
 
     def analyze(self, user_input):
         """
@@ -416,37 +449,42 @@ if __name__ == '__main__':
     评论处理低效：人工筛选评论耗时耗力，无法快速定位用户对产品质量、物流速度、客服服务的具体反馈。
     需求洞察模糊：用户对商品的评价分散且主观（如“纸尿裤漏尿”“奶瓶刻度不清晰”），难以系统化分析高频问题，导致改进措施滞后。
     """
+    output = irars_system.analyze(user_query)
+    print(output)
+     
+    # print(f"用户需求: {user_query}\n")
     
-    print(f"用户需求: {user_query}\n")
-    
-    # 测试实体提取
-    print("\n----------- 实体提取 -----------")
-    entities = irars_system._extract_entities(user_query)
-    if entities:
-        print(json.dumps(entities, indent=2, ensure_ascii=False))
-    print("------------------------------------")
-
-    # 测试关键词生成
-    print("\n----------- 关键词生成 -----------")
-    keywords = irars_system._generate_keywords(entities)
-    if keywords:
-        print("\n最终生成的关键词列表:")
-        print(json.dumps(keywords, indent=2, ensure_ascii=False))
-    print("------------------------------------")
-
-    # 完整的分析流程（暂时注释掉，因为其他方法还是空的）
-    # print("\n----------- 完整分析流程 -----------")
-    # recommendation = irars_system.analyze(user_query)
-    # print(f"分析结果: {recommendation}")
+    # # 测试实体提取
+    # print("\n----------- 实体提取 -----------")
+    # entities = irars_system._extract_entities(user_query)
+    # if entities:
+    #     print(json.dumps(entities, indent=2, ensure_ascii=False))
     # print("------------------------------------")
 
-    print("\n----------- 文档召回 -----------")
-    docs = irars_system._get_docs(keywords)
-    if docs:
-        print("\n最终召回到的文档列表:")
-        print(docs)
-    print("------------------------------------")
+    # # 测试关键词生成
+    # print("\n----------- 关键词生成 -----------")
+    # keywords = irars_system._generate_keywords(entities)
+    # if keywords:
+    #     print("\n最终生成的关键词列表:")
+    #     print(json.dumps(keywords, indent=2, ensure_ascii=False))
+    # print("------------------------------------")
 
-    print(irars_system._apply_rules_to_prompt(docs, user_query, keywords))
+    # # 完整的分析流程（暂时注释掉，因为其他方法还是空的）
+    # # print("\n----------- 完整分析流程 -----------")
+    # # recommendation = irars_system.analyze(user_query)
+    # # print(f"分析结果: {recommendation}")
+    # # print("------------------------------------")
+
+    # print("\n----------- 文档召回 -----------")
+    # docs = irars_system._get_docs(keywords)
+    # if docs:
+    #     print("\n最终召回到的文档列表:")
+    #     print(docs)
+    # print("------------------------------------")
+
+
+    # constructed_result = irars_system._apply_rules_to_prompt(docs, user_query, keywords)
+    # print(constructed_result)
+    # print(irars_system._generate_output(constructed_result))
 
     
