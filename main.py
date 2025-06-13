@@ -28,7 +28,7 @@ class IRARS:
         load_dotenv()
         
         # 使用传入的API密钥或从环境变量获取
-        self.api_key = api_key or os.getenv('SILICONFLOW_API_KEY')
+        self.api_key = api_key
         if not self.api_key:
             raise ValueError("API密钥未提供，请在初始化时提供api_key参数或在.env文件中设置SILICONFLOW_API_KEY")
         
