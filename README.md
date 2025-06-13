@@ -10,10 +10,13 @@ git clone https://github.com/TMAstrider/proposal_agent.git
 ```
 pip install -r requirements.txt
 ```
-1. 运行项目
+4. 运行项目
 ```
 streamlit run app.py
 ```
+5. 在 localhost 弹出界面填入 apikey
+6. 在用户输入需求描述，按下 Enter
+7. 待模型返回结果，得到 proposal
 
 # 结构说明
 - `app.py` 这个主要是一个streamlit应用，简单展示输出结果

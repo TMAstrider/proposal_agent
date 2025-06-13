@@ -7,7 +7,7 @@ YOUR_API_KEY = ""
 
 # 设置页面配置
 st.set_page_config(
-    page_title="智能需求分析助手",
+    page_title="Proposal agent for HIAS assignment",
     page_icon="🤖",
     layout="wide"
 )
