@@ -1,5 +1,7 @@
-import json
 import os
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+
+import json
 import rules
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -137,7 +139,7 @@ class IRARS:
         print("正在调用 API 分析需求...")
         try:
             prompt = f"""
-            你是一个专业的软件需求分析师。请分析以下用户需求文本，并从中提取出关键信息。
+            你是一个专业的实体抽取大师。请分析以下用户需求文本，并从中提取出关键信息。
             请将提取的信息结构化为 JSON 对象，包含以下四个维度：
             1. `software_features`: 明确提到的软件功能需求。
             2. `hardware_requirements`: 任何与硬件相关的要求或约束。
@@ -164,7 +166,7 @@ class IRARS:
                 temperature=0.7,
                 top_p=0.7,
                 frequency_penalty=0.5,
-                max_tokens=2048  # 增加 token 限制以确保完整的 JSON 输出
+                max_tokens=8192  # 增加 token 限制以确保完整的 JSON 输出
             )
             
             contents = response.choices[0].message.content
@@ -221,14 +223,14 @@ class IRARS:
             这些关键词将用于在我们的知识库中进行匹配。
 
             我们的产品主要能力包括但不限于：
-            意图理解、闲聊问答、知识问答（RAG）、评论分析、知识库构建、文档分类、数据流转、关键字段审核、非结构化文档处理、数据整合和处理、
+            意图理解、闲聊问答、知识问答（RAG）、评论分析、评论分类、评论标签化、知识库构建、文档分类、数据流转、关键字段审核、非结构化文档处理、数据整合和处理、嵌入模型、ocr识别、idp智能文档处理、任务拆解、多模态与页面检、组件生成、
 
             请仔细分析以下实体信息，并生成最相关的关键词列表：
             {entities_str}
 
             要求：
             1. 只输出关键词列表，不要包含任何解释或额外文本
-            2. 每个关键词应该是标准化的功能名称
+            2. 每个关键词应该是我们的产品主要能力内容例如：意图理解、闲聊问答、知识问答（RAG）、评论分析、知识库构建、文档分类、数据流转、关键字段审核、非结构化文档处理、数据整合和处理、嵌入模型、ocr识别、idp智能文档处理、任务拆解、多模态与页面检、组件生成等等
             3. 关键词数量控制在3-8个之间
             4. 输出格式必须是有效的 JSON 数组，例如：["关键词1", "关键词2", "关键词3"]
             """
@@ -242,7 +244,7 @@ class IRARS:
                 temperature=0.7,
                 top_p=0.7,
                 frequency_penalty=0.5,
-                max_tokens=1024
+                max_tokens=8192
             )
             
             contents = response.choices[0].message.content
@@ -292,13 +294,13 @@ class IRARS:
             print(f"生成关键词时出错: {e}")
             return []
 
-    def _match_modules(self, keywords):
+    def _get_docs(self, keywords):
         """
-        根据关键词匹配知识库中的模块。
+        根据关键词召回知识库中的文档。
         :param keywords: 关键词列表。
-        :return: 匹配到的模块列表。
+        :return: 匹配到的文档列表。
         """
-        print(f"用关键词 {keywords} 匹配模块...")
+        print(f"用关键词 {keywords} 匹配文档...")
         
         matched_results = []
         
@@ -307,21 +309,24 @@ class IRARS:
             print(f"\n检索关键词: {keyword}")
             try:
                 # 使用 Milvus 服务进行语义检索
-                results = self.milvus_service.search_similar(keyword, limit=3)
-                print(results)
-                # if results and len(results) > 0:
-                #     # 处理检索结果
-                #     for hit in results[0]:
-                #         result = {
-                #             'keyword': keyword,
-                #             'text': hit.entity.get('text', ''),
-                #             'metadata': hit.entity.get('metadata', {}),
-                #             'score': hit.score
-                #         }
-                #         matched_results.append(result)
-                #         print(f"找到匹配: {result['text'][:100]}... (相似度: {result['score']:.4f})")
-                # else:
-                #     print(f"未找到与关键词 '{keyword}' 相关的匹配")
+                results = self.milvus_service.search_similar(keyword, limit=2)
+                
+                # 提取并打印text内容列表
+                text_list = [hit['entity']['text'] for hit in results[0]] if results and len(results) > 0 else []
+                print("提取的text内容列表:")
+                for i, text in enumerate(text_list, 1):
+                    print(f"{i}. {text}")
+                
+                if results and len(results) > 0:
+                    # 处理检索结果
+                    for hit in results[0]:
+                        result = {
+                            'keyword': keyword,
+                            'text': hit['entity']['text'],
+                            'metadata': hit['entity']['metadata'],
+                            'score': hit['distance']
+                        }
+                        matched_results.append(result)
                     
             except Exception as e:
                 print(f"检索关键词 '{keyword}' 时出错: {str(e)}")
@@ -338,6 +343,7 @@ class IRARS:
                 unique_results.append(result)
         
         print(f"\n共找到 {len(unique_results)} 个唯一匹配")
+        print(f"匹配到的唯一文档:{seen_texts}")
         return unique_results
 
     def _apply_rules(self, matched_modules):
@@ -366,7 +372,7 @@ class IRARS:
         """
         entities = self._extract_entities(user_input)
         keywords = self._generate_keywords(entities)
-        matched_modules = self._match_modules(keywords)
+        matched_modules = self._get_docs(keywords)
         analysis_result = self._apply_rules(matched_modules)
         output = self._generate_output(analysis_result)
         return output
@@ -378,18 +384,13 @@ if __name__ == '__main__':
     place_holder = "user query:"
     user_query = f"""
     {place_holder}
-    企业背景：
-    某跨国科技公司（规模：5000+员工）专注于人工智能和云计算解决方案的开发与推广。随着公司业务的快速扩张，内部知识库积累了大量的技术文档、产品手册、客户案例以及市场研究报告。然而，由于信息分散且缺乏高效的检索工具，员工在查找相关资料时经常遇到以下挑战：
+    案例场景：母婴电商平台的用户评论智能化管理
 
-    信息检索效率低：员工需要花费大量时间在不同系统中手动搜索，且难以精准定位所需内容。
-    知识共享不足：新员工或跨部门协作时，难以快速获取历史项目经验或技术文档，导致重复劳动。
-    决策支持有限：管理层在制定战略时，无法快速整合公司内部的全部相关知识，影响决策的准确性和时效性。
-    预期效果：
-    该公司希望实现以下改进：
+    企业背景
+    某中型母婴电商平台“BabyCare”主营婴幼儿用品，月均订单量超10万，用户评论日均新增5000条。随着业务增长，平台面临两大问题：
 
-    高效信息检索：员工输入关键词（如"云迁移最佳实践"）后，自动从内部文档（Confluence、SharePoint、GitHub等）中检索相关内容，并生成简洁、准确的摘要或答案，显著减少搜索时间。
-    智能知识整合：跨部门协作时，系统能自动关联相关案例（如"某客户云架构设计"），生成上下文相关的建议，避免信息孤岛。
-    动态决策支持：管理层可通过自然语言提问（如"近两年亚太区客户需求趋势"），实时整合销售报告、市场分析等数据，生成结构化洞察，辅助快速决策。
+    评论处理低效：人工筛选评论耗时耗力，无法快速定位用户对产品质量、物流速度、客服服务的具体反馈。
+    需求洞察模糊：用户对商品的评价分散且主观（如“纸尿裤漏尿”“奶瓶刻度不清晰”），难以系统化分析高频问题，导致改进措施滞后。
     """
     
     print(f"用户需求: {user_query}\n")
@@ -415,9 +416,9 @@ if __name__ == '__main__':
     # print(f"分析结果: {recommendation}")
     # print("------------------------------------")
 
-    print("\n----------- 模块匹配 -----------")
-    matched_modules = irars_system._match_modules(keywords)
-    # if matched_modules:
-        # print("\n最终匹配到的模块列表:")
-        # print(json.dumps(matched_modules, indent=2, ensure_ascii=False))
+    print("\n----------- 文档召回 -----------")
+    matched_modules = irars_system._get_docs(keywords)
+    if matched_modules:
+        print("\n最终召回到的文档列表:")
+        print(matched_modules)
     print("------------------------------------")
