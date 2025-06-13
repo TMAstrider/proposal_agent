@@ -2,7 +2,7 @@ import os
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
 import json
-import rules
+import prompt_componets
 from dotenv import load_dotenv
 from openai import OpenAI
 from milvus_service import MilvusService
@@ -123,8 +123,8 @@ class IRARS:
     def _load_rules(self):
         """从 rules.py 加载规则。"""
         # 假设 rules.py 中定义了一个名为 RECOMMENDATION_RULES 的变量
-        if hasattr(rules, 'RECOMMENDATION_RULES'):
-            return rules.RECOMMENDATION_RULES
+        if hasattr(prompt_componets, 'RECOMMENDATION_RULES'):
+            return prompt_componets.RECOMMENDATION_RULES
         else:
             print("警告: 在 rules.py 中未找到 RECOMMENDATION_RULES。")
             return []
@@ -346,22 +346,46 @@ class IRARS:
         print(f"匹配到的唯一文档:{seen_texts}")
         return unique_results
 
-    def _apply_rules(self, matched_modules):
+    def _apply_rules_to_prompt(self, retrieved_docs, user_query, keywords=""):
         """
-        应用规则引擎，根据匹配到的模块进行推理。
-        :param matched_modules: 匹配到的模块列表。
-        :return: 推理结果。
+        应用规则引擎，根据匹配到的文档进行推理。
+        :param retrieved_docs: 召回的文档列表。
+        :param user_query: 用户原始查询。
+        :param keywords: 生成的关键词列表。
+        :return: 构造的prompt
         """
-        print(f"向 {matched_modules} 应用规则...")
-        pass
+        # 加载规则和SPECS配置
+        rules = self._load_rules()
+        specs = prompt_componets.SPECS
 
-    def _generate_output(self, analysis_result):
+        prompt = f"""
+        你是一个专业的产品功能分析师，根据用户的产品功能需求，结合知识库中的文档和系统配置，进行功能分析和推荐。
+        
+        系统配置信息：
+        {json.dumps(specs, indent=2, ensure_ascii=False)}
+        
+        适用规则：
+        {json.dumps(rules, indent=2, ensure_ascii=False)}
+        
+        知识库文档：
+        {retrieved_docs}
+        
+        用户需求：
+        {user_query}
+        
+        请根据以上信息，进行功能分析和推荐，并说明推荐理由。
+        """
+
+        return prompt
+
+    def _generate_output(self, constructed_result):
         """
         根据分析结果生成最终的推荐或输出。
         :param analysis_result: 分析和推理的结果。
         :return: 格式化的输出字符串。
         """
-        print(f"为结果 {analysis_result} 生成输出...")
+        print(f"最后总结生成输出...")
+
         pass
 
     def analyze(self, user_input):
@@ -373,8 +397,8 @@ class IRARS:
         entities = self._extract_entities(user_input)
         keywords = self._generate_keywords(entities)
         matched_modules = self._get_docs(keywords)
-        analysis_result = self._apply_rules(matched_modules)
-        output = self._generate_output(analysis_result)
+        constructed_result = self._apply_rules_to_prompt(matched_modules, user_input, keywords)
+        output = self._generate_output(constructed_result)
         return output
 
 if __name__ == '__main__':
@@ -417,8 +441,12 @@ if __name__ == '__main__':
     # print("------------------------------------")
 
     print("\n----------- 文档召回 -----------")
-    matched_modules = irars_system._get_docs(keywords)
-    if matched_modules:
+    docs = irars_system._get_docs(keywords)
+    if docs:
         print("\n最终召回到的文档列表:")
-        print(matched_modules)
+        print(docs)
     print("------------------------------------")
+
+    print(irars_system._apply_rules_to_prompt(docs, user_query, keywords))
+
+    
