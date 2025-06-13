@@ -12,7 +12,7 @@ pip install -r requirements.txt
 ```
 1. 运行项目
 ```
-python app.py
+streamlit run app.py
 ```
 
 # 结构说明
