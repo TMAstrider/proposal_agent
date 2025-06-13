@@ -2,11 +2,15 @@
 这是高级人工智能课的作业，选题为**proposal agent**，基于本地知识库的文档以及外部search api的使用，根据用户输入的需求描述，生成符合用户需求的软件功能配置。
 # Quick start
 1. 首先需要在SiliconFlow注册账号并获取API Key
-2. 安装依赖
+2. clone repo
+```
+git clone https://github.com/TMAstrider/proposal_agent.git
+```
+3. 安装依赖
 ```
 pip install -r requirements.txt
 ```
-3. 运行项目
+1. 运行项目
 ```
 python app.py
 ```
